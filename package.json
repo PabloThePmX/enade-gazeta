@@ -1,0 +1,21 @@
+{
+  "name": "enade-gazeta",
+  "version": "1.0.0",
+  "description": "Study site for Brazil's Enade Computing exam, built from INEP's official tests (2022+)",
+  "scripts": {
+    "crawl": "node crawler/build.js",
+    "start": "node server.js",
+    "test": "node tests/smoke.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@napi-rs/canvas": "^1.0.10",
+    "pdfjs-dist": "^6.4.299"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.12.0"
+  }
+}
