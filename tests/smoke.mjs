@@ -40,8 +40,8 @@ await page.evaluate(() => {
   localStorage.clear();
   localStorage.setItem('gazeta-enade:v1', JSON.stringify({
     v: 1,
-    respostas: { '2024-computacao-lic-q30': [{ r: 'B', ok: true, t: Date.now(), m: 'estudo', ms: 1000 }] },
-    marcadas: { '2022-formacao-geral-q01': true },
+    respostas: { '2021-ciencia-da-computacao-q10': [{ r: 'B', ok: true, t: Date.now(), m: 'estudo', ms: 1000 }] },
+    marcadas: { '2017-ciencia-da-computacao-q12': true },
     rascunhos: {}, simulados: [], dataProva: '2026-11-22',
   }));
 });
@@ -152,7 +152,7 @@ check((await page.$$('.table tbody tr')).length >= 6, 'sources page lists the ex
 
 // phone
 await page.setViewport({ width: 390, height: 844, isMobile: true });
-await visit('#/q/2025-computacao-teaching-q36');
+await visit('#/q/2017-ciencia-da-computacao-q09');
 const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
 check(scrollWidth <= 390, `no horizontal scroll on a phone (${scrollWidth}px)`);
 await screenshot('phone-question');

@@ -17,8 +17,8 @@ export const TOPICS = {
   ai: { label: 'Inteligência artificial e dados', group: 'specific', keywords: ['inteligencia artificial', '\\bia\\b', 'aprendizado de maquina', 'machine learning', 'redes? neura', 'ia generativa', 'generativa', 'aprendizado (supervisionado|nao supervisionado|por reforco)', 'supervisionad', 'clusteriza', 'agrupamento', 'big data', 'mineracao de dados', 'ciencia de dados', 'chatgpt', 'modelos? de linguagem', 'algoritmos? de recomendacao', 'vies algoritmico'] },
   security: { label: 'Segurança da informação', group: 'specific', keywords: ['seguranca da informacao', 'criptografia', 'ataques?', 'malware', 'virus', 'senhas?', 'autenticacao', 'privacidade', '\\blgpd', 'firewall', 'phishing', 'vulnerabilidade', 'controle de acesso', 'permiss(ao|oes) de acesso', 'backup'] },
   hci: { label: 'IHC, acessibilidade e interfaces', group: 'specific', keywords: ['usabilidade', '\\bihc\\b', 'interacao humano', 'experiencia do usuario', '\\bux\\b', 'interfaces?', 'acessibilidade', 'acessive(l|is)', 'tecnologias? assistivas?', 'deficiencia visual', 'baixa visao', '\\bwcag', 'heuristica', 'computacao grafica', 'imagem digital', 'pixel', 'design de interface'] },
-  math: { label: 'Matemática, física e controle', group: 'specific', keywords: ['derivada', 'integral', 'equac(ao|oes) diferencia', 'transformada', 'laplace', 'fourier', 'sinais?\\b', 'sistemas? de controle', 'controlador', 'funcao de transferencia', 'probabilidade', 'estatistica', 'matriz', 'calculo numerico', 'frequencia', 'amostragem'] },
-  'computing-education': { label: 'Ensino de computação', group: 'specific', keywords: ['pensamento computacional', '\\bbncc', 'ensino de (computacao|programacao|algoritmos)', 'sequencia didatica', 'plano de aula', 'metodologias? ativas?', 'computacao desplugada', 'desplugad', 'robotica educacional', 'robotica', 'scratch', 'aprendizagem baseada em (projetos|problemas)', 'sala de aula invertida', 'gamificacao', 'ambientes? virtua(l|is) de aprendizagem', 'avaliacao (formativa|diagnostica|somativa)', 'professor', 'estudantes', 'alunos', 'aula'] },
+  math: { label: 'Matemática, física, estatística e otimização', group: 'specific', keywords: ['programacao linear', 'pesquisa operacional', 'funcao objetivo', 'otimizac', 'derivada', 'integral', 'equac(ao|oes) diferencia', 'transformada', 'laplace', 'fourier', 'sinais?\b', 'sistemas? de controle', 'controlador', 'funcao de transferencia', 'probabilidade', 'estatistica', 'media aritmetica', 'desvio padrao', 'mediana', 'quartil', 'variancia', 'dispersao', 'regressao linear', 'minimos quadrados', 'multiplicador de lagrange', 'matriz', 'calculo numerico', 'frequencia', 'amostragem', 'temperatura', 'calor', 'pressao', 'deformacao', 'elasticidade', 'corpo de prova', 'resfriamento', 'energia'] },
+  'information-systems': { label: 'Sistemas de informação e gestão de TI', group: 'specific', keywords: ['governanca', '\bcobit', '\bitil', '\bbpm', 'processos? de negocio', 'modelagem de processos', '\bpmbok', 'gerenciamento de projetos?', 'gestao de projetos?', '\bcmmi', 'nivel de maturidade', '\berp\b', '\bcrm\b', 'balanced scorecard', 'sistemas? de informac', 'sistemas? de apoio a decisao', 'business intelligence', 'alinhamento estrategico', 'tecnologia da informacao', '\bti\b', 'organizac', 'stakeholders?', 'cronograma', 'escopo do projeto'] },
   ethics: { label: 'Computação, ética e sociedade', group: 'specific', keywords: ['fake news', 'desinformacao', 'etica', 'cidadania digital', 'inclusao digital', 'exclusao digital', 'impactos? (sociais|da tecnologia)', 'direitos autorais', 'cultura digital', 'redes sociais', 'letramento digital'] },
 
   // General education
@@ -30,7 +30,7 @@ export const TOPICS = {
   'ge-science-culture': { label: 'Ciência, tecnologia e cultura', group: 'general', keywords: ['ciencia', 'cientific', 'tecnologia', 'inteligencia artificial', 'digital', 'internet', 'arte', 'cultura', 'literatura', 'cinema', 'musica', 'leitura', 'midia', 'desinformacao'] },
 };
 
-const FALLBACK = { general: 'ge-society', specific: 'computing-education' };
+const FALLBACK = { general: 'ge-society', specific: 'programming' };
 
 const normText = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -50,8 +50,6 @@ export function classify(text, group) {
       // more specific terms (at the start of the list) weigh more; repetition has diminishing returns
       if (n) score += (i < 6 ? 3 : 2) * Math.min(3, n) ** 0.7;
     });
-    // "computing education" should not win on generic words alone (teacher, class, students)
-    if (id === 'computing-education') score *= 0.6;
     if (score > 0) scores.push([id, score]);
   }
   scores.sort((a, b) => b[1] - a[1]);

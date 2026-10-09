@@ -2,13 +2,17 @@
 // Strategy: locate the "QUESTÃO NN" headers through the positioned text, crop each question's region from
 // the rendered page (full fidelity: figures, code and tables stay identical to the original) and extract
 // the text only for search, classification and pattern analysis.
-import { openPdf, pageRuns, renderPage, inkRows, crop, norm } from './pdf.js';
+import { openPdf, pageRuns, renderPage, inkRows, crop, norm, decodeGlyphIds } from './pdf.js';
 
 const SCALE = 2; // crop resolution (2x = ~1150px wide)
 
-// Markers are matched against the booklet's own (Portuguese) wording.
+// Markers are matched against the booklet's own (Portuguese) wording. A short header line can still
+// be in glyph ids when its font was not decoded for the whole page, so the decoded form is tried too.
 function classifyMarker(run) {
-  const n = run.n;
+  return markerFromText(run.n) || markerFromText(norm(decodeGlyphIds(run.str)));
+}
+
+function markerFromText(n) {
   let m;
   if (/QUESTIONARIO DE PERCEPCAO/.test(n)) return { kind: 'end' };
   if ((m = n.match(/^QUESTAO DISCURSIVA\s*(\d{1,2})?\b/))) return { kind: 'essay', num: m[1] ? +m[1] : null };
@@ -81,13 +85,21 @@ function findFooters(pages) {
  * to find where the specific component starts.
  */
 function coverRanges(runs) {
-  const text = runs.map((r) => r.n).join(' ');
-  const specific = text.match(/COMPONENTE ESPECIFICO(?: DA AREA)?:?\s*OBJETIVAS\s+(\d{1,2})\s*A\s*(\d{1,2})/);
-  const specificEssays = text.match(/COMPONENTE ESPECIFICO(?: DA AREA)?:?\s*DISCURSIVAS?\s+D(\d)(?:\s*A\s*D(\d))?/);
-  if (!specific) return null;
+  // some booklets split words at the "ti" ligature ("Objeti vas"), so join those back first
+  const text = runs.map((r) => r.n).join(' ').replace(/TI (?=[A-Z])/g, 'TI');
+  const specific = text.match(/COMPONENTE ESPECIFICO(?: DA AREA)?[:/]?\s*OBJETIVAS\s+(\d{1,2})\s*A\s*(\d{1,2})/);
+  const specificEssays = text.match(/COMPONENTE ESPECIFICO(?: DA AREA)?[:/]?\s*DISCURSIVAS?\s+D(\d)(?:\s*A\s*D(\d))?/);
+  // Engineering booklets split the specific part into subsections ("Núcleo de conteúdos básicos 9 a 20 …"),
+  // so fall back to the general-education range ("Formação Geral/Objetivas 1 a 8"): the specific part follows it.
+  const general = text.match(/FORMACAO GERAL[:/]?\s*OBJETIVAS\s+(\d{1,2})\s*A\s*(\d{1,2})/);
+  if (!specific && !general) return null;
   const essayNums = [];
   if (specificEssays) for (let i = +specificEssays[1]; i <= +(specificEssays[2] || specificEssays[1]); i++) essayNums.push(i);
-  return { specificFrom: +specific[1], specificTo: +specific[2], specificEssays: essayNums };
+  return {
+    specificFrom: specific ? +specific[1] : +general[2] + 1,
+    specificTo: specific ? +specific[2] : null,
+    specificEssays: essayNums,
+  };
 }
 
 export async function parseExam(file) {

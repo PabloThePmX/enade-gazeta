@@ -1,5 +1,5 @@
 // Reads INEP's final answer keys ("gabarito definitivo") in three formats:
-//  1) list: "QUESTÃO 12  C" (Enade 2022/2023)
+//  1) list: "QUESTÃO 12  C" (Enade 2022/2023) or a bare "12  C" table (Enade 2017)
 //  2) grid: a row of question numbers followed by a row of letters (Enade 2024/2025), one page per booklet
 //  3) image only (PND 2025/2026): uses the manual transcription in manual-answer-keys.json
 import fs from 'node:fs';
@@ -51,6 +51,16 @@ function parseList(rows) {
   return answers;
 }
 
+// "ITEM | GABARITO" table with one question per row: "12  C"
+function parsePairs(rows) {
+  const answers = {};
+  for (const row of rows) {
+    const m = row.text.match(/^(\d{1,2})\s+([A-E]|\*+|ANULAD[AO])$/);
+    if (m) answers[+m[1]] = /^[A-E]$/.test(m[2]) ? m[2] : null;
+  }
+  return answers;
+}
+
 function parseGrid(rows) {
   const answers = {};
   const isNumberRow = (row) => row.tokens.length >= 3 && row.tokens.every((t) => /^\d{1,2}$/.test(t.t));
@@ -96,5 +106,7 @@ export async function parseKey(file, page = 1) {
   const rows = groupRows(runs);
   const list = parseList(rows);
   if (Object.keys(list).length >= 5) return { answers: list, method: 'list' };
+  const pairs = parsePairs(rows);
+  if (Object.keys(pairs).length >= 5) return { answers: pairs, method: 'list' };
   return { answers: parseGrid(rows), method: 'grid' };
 }

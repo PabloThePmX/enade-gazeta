@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Study site for Brazil's Enade Computing exam, built from INEP's official tests (2022+)",
   "scripts": {
-    "crawl": "node crawler/build.js",
+    "crawl": "node --use-system-ca crawler/build.js",
     "start": "node server.js",
     "test": "node tests/smoke.mjs"
   },

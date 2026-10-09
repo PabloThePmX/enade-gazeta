@@ -67,12 +67,10 @@
 
   const topicLabel = (id) => DATA.topics[id]?.label || id;
   const formatLabel = (id) => DATA.formats[id] || 'Discursiva';
-  const examName = (e) => (e.modality === 'teaching' ? 'Licenciatura em Computação' : e.modality === 'general-education' ? 'Formação Geral dos bacharelados' : e.title);
+  const examName = (e) => e.title;
   const examFullName = (e) => `${examName(e)} (${e.year})`;
-  const examSubtitle = (e) => (e.modality === 'general-education'
-    ? `Questões de Formação Geral comuns a todos os bacharelados (caderno de ${e.sourceCourseName})`
-    : e.modality === 'teaching' ? 'Licenciatura' : 'Bacharelado');
-  const examShortLabel = (e) => (e.modality === 'teaching' ? 'Licenciatura' : e.modality === 'general-education' ? 'FG' : 'Eng. Comp.');
+  const examSubtitle = () => 'Bacharelado';
+  const examShortLabel = (e) => ({ ciencia_da_computacao: 'CC', engenharia_da_computacao: 'EC', sistemas_de_informacao: 'SI', analise_e_desenvolvimento_de_sistemas: 'ADS', engenharia_de_software: 'ES' }[e.course] || e.title);
   const questionLabel = (q) => (q.kind === 'essay' ? `Discursiva ${q.num}` : `Questão ${String(q.num).padStart(2, '0')}`);
   const sectionLabel = (s) => (s === 'general' ? 'Formação Geral' : 'Componente Específico');
   const KEY_METHOD_LABELS = {
@@ -251,15 +249,6 @@
         'Os distratores costumam vir de erros previsíveis: fator 2, série x paralelo, fórmula invertida, ordem trocada.',
       ],
     },
-    'classroom-scenario': {
-      summary: 'Uma situação de escola e a pergunta sobre a melhor ação, estratégia ou forma de avaliar.',
-      steps: [
-        'Grife o objetivo declarado no enunciado (ex.: “promover a autonomia”, “articular escola e comunidade”). A resposta é a alternativa que atende exatamente a esse objetivo, não a que é apenas “boa”.',
-        'Prefira ações em que o estudante participa ativamente, que partem do contexto real da turma ou da comunidade e que são inclusivas e contínuas (mediação do professor, avaliação formativa).',
-        'Desconfie de ações pontuais, punitivas, só expositivas, baseadas em memorização ou que prometem “garantir” ou “eliminar” um problema.',
-        'Confira a etapa de ensino (Anos Iniciais, Anos Finais, Ensino Médio) e a norma citada (BNCC, LDB, ECA): a alternativa certa respeita as duas.',
-      ],
-    },
     interpretation: {
       summary: 'Texto, gráfico, tabela ou imagem como base.',
       steps: [
@@ -299,7 +288,7 @@
       const onlyII = o['only-ii-true'] || 0;
       lines.push(`Em ${P.assertionReason.n} questões de asserção-razão, a resposta “I falsa, II verdadeira” apareceu ${onlyII} vez${onlyII === 1 ? '' : 'es'}; a justificativa correta (as duas verdadeiras e a II explica a I) apareceu ${o['both-true-justifies'] || 0}.`);
     }
-    if (['classroom-scenario', 'conceptual', 'interpretation'].includes(format)) {
+    if (['conceptual', 'interpretation'].includes(format)) {
       const a = P.absolutes;
       const todos = a.words.find((w) => w.w === 'todos');
       lines.push(`Termos absolutos aparecem em ${fmtDecimal(a.distractorPct)}% das alternativas erradas e em ${fmtDecimal(a.correctPct)}% das corretas${todos ? ` (“todos”: ${todos.distractor} vezes em erradas, ${todos.correct} em corretas)` : ''}.`);
@@ -1062,7 +1051,6 @@
   route(/^\/padroes$/, function patternsPage() {
     const specificTopics = P.topics.filter((t) => t.group === 'specific').sort((a, b) => b.n - a.n);
     const generalTopics = P.topics.filter((t) => t.group === 'general').sort((a, b) => b.n - a.n);
-    const specificColumns = exams.filter((e) => e.modality !== 'general-education');
 
     const heatTable = (rows, columns, caption) => {
       const max = Math.max(1, ...rows.flatMap((t) => columns.map((e) => t.byExam[e.id] || 0)));
@@ -1103,23 +1091,24 @@
         <p class="dek">A Gazeta leu as ${fmtNum(P.objectiveCount)} questões objetivas com gabarito e contou o que se repete: os assuntos que mais caem, os formatos de questão e as palavras que aparecem mais nas alternativas certas do que nas erradas. São tendências; confirme sempre pelo conteúdo.</p>
       </section>
 
-      <section class="col-8 block block--thick">
+      <section class="col-12 block block--thick">
         <h2 class="title">O que mais cai em Computação</h2>
         <p class="prose">Número de questões de cada assunto por prova. Quanto mais escuro, maior o peso naquele ano. Uma questão pode tratar de dois assuntos.</p>
-        ${heatTable(specificTopics, specificColumns, 'Componente específico')}
+        ${heatTable(specificTopics, exams, 'Componente específico')}
+        <p class="fine-print note-below">CC: Ciência da Computação. EC: Engenharia de Computação. SI: Sistemas de Informação. ADS: Análise e Desenvolvimento de Sistemas.</p>
       </section>
-      <aside class="col-4 block block--thick rule-left">
+      <section class="col-12 block">
         <h2 class="title-sm">Leitura rápida</h2>
-        <div class="prose prose--small">
-          <p>Desde 2024 a prova de Computação disponível é a de <b>licenciatura</b>: o peso de ${esc(topicLabel('computing-education'))} é grande, mas quase sempre misturado a conteúdo técnico (redes, SO, algoritmos, banco de dados).</p>
-          <p>A prova de 2023 (Engenharia da Computação) é a mais técnica do acervo: circuitos, sistemas digitais, SO, redes e programação em C.</p>
-          <p>Ciência da Computação (bacharelado) não foi avaliada entre 2022 e 2025 no ciclo do Enade. Quando o Inep publicar, rode o crawler de novo e ela entra automaticamente.</p>
+        <div class="grid">
+          <p class="col-4 prose prose--small">O acervo reúne as provas de Ciência da Computação, Engenharia de Computação, Sistemas de Informação e Análise e Desenvolvimento de Sistemas (tecnólogo) aplicadas a partir de 2014, quando o Enade passou a ter uma prova separada para cada curso de Computação. Cada curso é avaliado a cada três ou quatro anos, por isso há poucas edições de cada um.</p>
+          <p class="col-4 prose prose--small rule-left">As provas de Engenharia de Computação puxam mais para hardware: circuitos, sistemas digitais e controle. Ciência da Computação, Sistemas de Informação e ADS concentram algoritmos, programação, banco de dados e engenharia de software.</p>
+          <p class="col-4 prose prose--small rule-left">Quando o Inep publicar uma prova nova desses cursos, rode o crawler de novo e ela entra automaticamente.</p>
         </div>
-      </aside>
+      </section>
 
       <section class="col-12 block">
         <h2 class="title">Formação geral</h2>
-        ${heatTable(generalTopics, exams, 'Formação geral (bacharelados) e formação geral docente (licenciaturas)')}
+        ${heatTable(generalTopics, exams, 'Formação geral (parte comum a todos os cursos, presente em cada prova)')}
       </section>
 
       <section class="col-12 block block--double">
@@ -1161,7 +1150,7 @@
         <div class="word-cloud">${P.vocabulary.correct.map((v) => `<span>${esc(v.w)}<small>${v.correct}×${v.distractor}</small></span>`).join('')}</div>
         <h3 class="title-sm title-sm--spaced">Vocabulário das erradas</h3>
         <div class="word-cloud">${P.vocabulary.distractors.map((v) => `<span>${esc(v.w)}<small>${v.correct}×${v.distractor}</small></span>`).join('')}</div>
-        <p class="fine-print note-below">Números: vezes em corretas × em erradas. As corretas falam em mediação, reflexão e análise; as erradas, em exposição, montagem e garantia.</p>
+        <p class="fine-print note-below">Números: vezes em corretas × em erradas. Mais típicas das corretas: ${P.vocabulary.correct.slice(0, 3).map((v) => esc(v.w)).join(', ')}; das erradas: ${P.vocabulary.distractors.slice(0, 3).map((v) => esc(v.w)).join(', ')}.</p>
       </section>
 
       <section class="col-6 block">
@@ -1256,8 +1245,7 @@
       <aside class="col-4 block block--thick rule-left prose prose--small">
         <h2 class="title-sm">Notas da redação</h2>
         <p>As questões aparecem como recortes do caderno 1 de cada prova, sem nenhuma alteração. O texto extraído serve apenas para busca e classificação.</p>
-        <p>Em 2022 e 2025 não houve prova de Computação no bacharelado; as questões de formação geral (iguais para todos os cursos daquele ano) vêm do caderno de Administração.</p>
-        <p>Em 2025 e 2026 o Inep publicou o gabarito apenas como imagem; a transcrição manual está em <code>crawler/manual-answer-keys.json</code> e pode ser conferida no PDF.</p>
+        <p>Só entram provas de Ciência da Computação, Engenharia de Computação, Sistemas de Informação e Análise e Desenvolvimento de Sistemas, de 2014 em diante. As questões de formação geral que aparecem aqui fazem parte dessas mesmas provas.</p>
         <p>Assuntos e formatos foram classificados por palavras-chave, com revisão manual (<code>crawler/overrides.json</code>). Discorda de algum? Edite o arquivo e rode o crawler.</p>
         <p class="fine-print">Dados gerados em ${shortDate(generatedAt)} às ${shortTime(generatedAt)}. Para atualizar: <code>npm run crawl</code>.</p>
       </aside>

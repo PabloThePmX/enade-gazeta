@@ -9,13 +9,12 @@ export const FORMATS = {
   matching: 'Associação ou ordenação',
   code: 'Código, consulta ou pseudocódigo',
   calculation: 'Cálculo ou resultado numérico',
-  'classroom-scenario': 'Situação de sala de aula',
   interpretation: 'Interpretação de texto, gráfico ou imagem',
   conceptual: 'Conceito direto',
 };
 
 // formats whose alternatives are free-form sentences (where length and wording can be compared)
-const FREE_TEXT_FORMATS = ['classroom-scenario', 'conceptual', 'interpretation'];
+const FREE_TEXT_FORMATS = ['conceptual', 'interpretation'];
 
 // alternatives such as "I, apenas." / "I e III." / "I, II e IV."
 const ROMAN_ALTERNATIVE = /^(I|II|III|IV|V|VI)(\s*(,|e)\s*(I|II|III|IV|V|VI))*\s*(,\s*apenas)?\.?$/;
@@ -39,7 +38,6 @@ export function detectFormat(q) {
 
   if (mostAlts((a) => /^[\s\dR$.,%+\-−×x*/=()ΩµμmkMGHzVAWsbBpPº°]+\.?$/.test(a) && /\d/.test(a))) return 'calculation';
 
-  if (/\b(professora?|docentes?|escolas?|estudantes|alunos|turma|sala de aula)\b/.test(statementN) && q.year >= 2024) return 'classroom-scenario';
   if (/\b(texto|grafico|figura|imagem|tirinha|charge|infografico|tabela)\b/.test(statementN) || /disponivel em/.test(statementN)) return 'interpretation';
   return 'conceptual';
 }
@@ -177,13 +175,15 @@ export function computeStats(questions, exams) {
   const arQs = objective.filter((q) => q.format === 'assertion-reason');
   const outcomes = {};
   for (const q of arQs) {
-    const t = normText(q.alternatives.find((a) => a.letter === q.answer)?.text || '');
+    // compared without spaces and commas: extraction sometimes splits words ("j ustificativa") and older tests
+    // drop a word or a comma ("As asserções I e II são verdadeiras, mas…")
+    const t = normText(q.alternatives.find((a) => a.letter === q.answer)?.text || '').replace(/[\s,]/g, '');
     let k = 'other';
-    if (/sao proposicoes verdadeiras, e a ii e uma justi\s*fica\s*ti\s*va/.test(t)) k = 'both-true-justifies';
-    else if (/sao proposicoes verdadeiras, mas a ii nao/.test(t)) k = 'both-true-no-justification';
-    else if (/a assercao i e uma proposicao verdadeira, e a ii e uma proposicao falsa/.test(t)) k = 'only-i-true';
-    else if (/a assercao i e uma proposicao falsa, e a ii e uma proposicao verdadeira/.test(t)) k = 'only-ii-true';
-    else if (/sao proposicoes falsas/.test(t)) k = 'both-false';
+    if (/sao(proposicoes)?verdadeiraseaiieumajustificativa/.test(t)) k = 'both-true-justifies';
+    else if (/sao(proposicoes)?verdadeirasmasaiinao/.test(t)) k = 'both-true-no-justification';
+    else if (/aassercaoieumaproposicaoverdadeiraeaiieumaproposicaofalsa/.test(t)) k = 'only-i-true';
+    else if (/aassercaoieumaproposicaofalsaeaiieumaproposicaoverdadeira/.test(t)) k = 'only-ii-true';
+    else if (/sao(proposicoes)?falsas/.test(t)) k = 'both-false';
     outcomes[k] = (outcomes[k] || 0) + 1;
   }
   out.assertionReason = { n: arQs.length, outcomes };

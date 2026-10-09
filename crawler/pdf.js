@@ -35,6 +35,7 @@ export function norm(s) {
 export async function pageRuns(page) {
   const vp = page.getViewport({ scale: 1 });
   const tc = await page.getTextContent();
+  decodeGlyphIdFonts(tc.items);
   const items = tc.items
     .filter((it) => it.str && it.str.trim())
     .map((it) => {
@@ -77,6 +78,51 @@ export async function pageRuns(page) {
     r.n = norm(r.str);
   }
   return { width: vp.width, height: vp.height, runs };
+}
+
+// Some booklets (2017) embed Calibri without a character map, so pdf.js returns glyph ids
+// ("ĐŽŶƐŝĚĞƌĞ" for "considere", control characters for space/E/Ã). The table maps them back.
+const calibriGlyphs = JSON.parse(fs.readFileSync(new URL('./calibri-glyph-ids.json', import.meta.url), 'utf8')).glyphs;
+
+const isGlyphIdChar = (code) => code < 0x20 || (code >= 0x100 && code < 0x400);
+
+// A few glyph ids fall on Unicode code points that get normalized to another character before we see
+// them (U+037E GREEK QUESTION MARK becomes ";"), so map them back to the original glyph id.
+const NORMALIZED_GLYPH_IDS = { 0x3b: 0x37e, 0xb7: 0x387, 0x2b9: 0x374 };
+
+/** Maps every character of a string through the Calibri glyph-id table (unknown control characters are dropped). */
+export function decodeGlyphIds(str) {
+  return [...str].map((ch) => {
+    let code = ch.codePointAt(0);
+    if (code === 0x20) return ' '; // spaces pdf.js inserted between items, not glyph 32
+    code = NORMALIZED_GLYPH_IDS[code] ?? code;
+    return calibriGlyphs[code] ?? (code < 0x20 ? '' : ch);
+  }).join('');
+}
+
+// Glyphs that leak from partly mapped fonts (whose text is otherwise fine). None is used in Portuguese.
+// Only applied to fonts that were not decoded: in a fully glyph-id font, "Ě" is simply the letter "d".
+const LEAKED_GLYPHS = { 'Ě': ' ', 'Į': 'fi', 'Ĵ': '(', 'ͳ': '-' };
+const LEAKED_PATTERN = new RegExp(`[${Object.keys(LEAKED_GLYPHS).join('')}]`, 'g');
+
+/**
+ * Fixes, in place, the text of each font on the page: fonts whose characters are mostly glyph ids are
+ * decoded; the others only get the leaked glyphs replaced.
+ */
+function decodeGlyphIdFonts(items) {
+  const byFont = new Map();
+  for (const it of items) {
+    if (!byFont.has(it.fontName)) byFont.set(it.fontName, []);
+    byFont.get(it.fontName).push(it);
+  }
+  for (const fontItems of byFont.values()) {
+    const chars = [...fontItems.map((it) => it.str).join('')].filter((ch) => ch.trim());
+    const odd = chars.filter((ch) => isGlyphIdChar(ch.codePointAt(0))).length;
+    const glyphIdFont = chars.length >= 3 && odd / chars.length >= 0.5;
+    for (const it of fontItems) {
+      it.str = glyphIdFont ? decodeGlyphIds(it.str) : it.str.replace(LEAKED_PATTERN, (ch) => LEAKED_GLYPHS[ch]);
+    }
+  }
 }
 
 /** Joins the text items of one line, inserting a space only where there is a visible gap. */

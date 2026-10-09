@@ -1,46 +1,65 @@
-﻿// Discovers tests and answer keys on INEP's official pages and downloads the PDFs we need.
+// Discovers tests and answer keys on INEP's official pages and downloads the PDFs we need.
 import fs from 'node:fs';
 import path from 'node:path';
 
 const BASE = 'https://www.gov.br/inep/pt-br/areas-de-atuacao/avaliacao-e-exames-educacionais';
 
-// INEP has reorganized its site a few times; each year may live in any of these sections.
-export const SECTIONS = [
-  { slug: 'enade', modality: 'bachelor' },
-  { slug: 'enade-bacharelado-e-superiores-de-tecnologia', modality: 'bachelor' },
-  { slug: 'enade-das-licenciaturas', modality: 'teaching' },
+// INEP has reorganized its site a few times; each year may live in either of these sections.
+// Teaching degrees ("licenciaturas") are out of scope, so their section is not crawled.
+export const SECTIONS = ['enade', 'enade-bacharelado-e-superiores-de-tecnologia'];
+
+// The only courses we keep: the bachelor's computing courses and the Análise e Desenvolvimento de Sistemas
+// technology degree. Each pattern covers every spelling INEP has used in file names
+// (e.g. 2017 booklet "03_CIE_COM_BACHAREL_BAIXA" vs. its answer key "03_Ciencia_da_Computacao_Bacharelado";
+// in 2014 Ciência da Computação is just "03_computacao_bacharelado").
+export const COMPUTING_COURSES = [
+  { slug: 'ciencia_da_computacao', pattern: /ciencias?_(da_)?computacao|cie_com(_|$)|^(\d+_)?(gab_)?computacao_bacharel/ },
+  { slug: 'engenharia_da_computacao', pattern: /engenharia_(da_|de_)?computacao|eng_com(_|$)/ },
+  { slug: 'sistemas_de_informacao', pattern: /sistemas?_(de_)?informacao|sis_informacao/ },
+  { slug: 'engenharia_de_software', pattern: /engenharia_(de_)?software|eng_sof(_|$)/ },
+  { slug: 'analise_e_desenvolvimento_de_sistemas', pattern: /analise_(e_)?desenv(olvimento)?_(de_)?sistemas|ana_des_sis|desenvolvimento_(de_)?sistemas/ },
 ];
-
-// Computing courses, matched against INEP's file names (no accents)
-export const COMPUTING = /comput|informatica|software|sistemas_de_informacao|analise_e_desenvolvimento|redes_de_computadores|ciencia_de_dados|seguranca_da_informacao|jogos_digitais|tecnologia_da_informacao/i;
-
-// Course used as the source of the bachelor's general-education section in years without a computing test
-// (general education is the same for every bachelor's course in a given year).
-export const GENERAL_EDUCATION_SOURCE = ['administracao', 'direito', 'psicologia'];
 
 // accessibility editions of the same booklet (screen reader, large print, ...)
 const VARIANT = /ledor|ampliada|super|braille|nvda|libras|video|_ac_|transcri/i;
+const TEACHING_DEGREE = /licenciatura|(^|_)lic(_|$)/;
 
 const HEADERS = { 'User-Agent': 'enade-gazeta/1.0 (personal study tool)' };
 
+// INEP's servers drop connections now and then; retry a few times with a growing pause.
+async function fetchWithRetry(url, attempts = 4) {
+  for (let i = 1; ; i++) {
+    try {
+      return await fetch(url, { headers: HEADERS, redirect: 'follow' });
+    } catch (e) {
+      if (i >= attempts) throw new Error(`${e.cause?.code || e.message} for ${url}`);
+      await new Promise((r) => setTimeout(r, 1500 * i));
+    }
+  }
+}
+
 async function fetchText(url) {
-  const res = await fetch(url, { headers: HEADERS, redirect: 'follow' });
+  const res = await fetchWithRetry(url);
   if (!res.ok) return null;
   return res.text();
 }
 
 /**
- * Classifies an INEP PDF link by its file name.
- * INEP's prefixes: PV = test booklet ("prova"), GB = answer key ("gabarito"), MP = test map ("mapa"),
- * padrao_resposta / discursiva = essay answer guide.
+ * Classifies an INEP PDF link.
+ * Since 2021 the type is a token in the file name: PV = test booklet ("prova"), GB = answer key ("gabarito"),
+ * MP = test map ("mapa"), "discursiva" = essay answer guide. Up to 2019 each type has its own folder:
+ * /provas/<year>/, /gabaritos/<year>/ and /padrao_resposta/<year>/.
  */
 export function describeFile(url, year) {
   const file = decodeURIComponent(url.split('/').pop());
   const name = file.replace(/\.pdf$/i, '').toLowerCase();
-  if (!name.startsWith(String(year))) return null;
+  const folderScheme = new RegExp(`/(provas|gabaritos|padrao_resposta)/${year}/`, 'i').exec(url);
+  if (!folderScheme && !name.startsWith(String(year))) return null;
   if (VARIANT.test(name)) return null;
+
   let type = null;
-  if (/padrao_resposta/i.test(url) || /(^|_)discursiva(_|$)/.test(name)) type = 'answerGuide';
+  if (folderScheme) type = { provas: 'exam', gabaritos: 'answerKey', padrao_resposta: 'answerGuide' }[folderScheme[1].toLowerCase()];
+  else if (/padrao_resposta/i.test(url) || /(^|_)discursiva(_|$)/.test(name)) type = 'answerGuide';
   else if (/(^|_)pv(_|$)/.test(name)) type = 'exam';
   else if (/(^|_)gb(_|$)/.test(name)) type = 'answerKey';
   else if (/(^|_)mp(_|$)/.test(name)) type = 'testMap';
@@ -50,14 +69,17 @@ export function describeFile(url, year) {
   const single = name.match(/_(?:pv|gb)_(\d+)(?:_|$)/);
   const booklet = range ? null : single ? +single[1] : 1;
 
-  const course = name
+  const computing = COMPUTING_COURSES.find((c) => c.pattern.test(name));
+  const course = computing ? computing.slug : name
     .replace(new RegExp('^' + year + '_'), '')
-    .replace(/(^|_)(pv|gb|mp|discursiva|cst)(?=_|$)/g, '')
+    .replace(/(^|_)(padrao_resposta|pad_resp)(?=_|$)/g, '')
+    .replace(/(^|_)(pv|gb|gab|mp|discursiva|cst|baixa|alta|bacharel|bacharelado)(?=_|$)/g, '')
     .replace(/_\d+_a_\d+$/, '')
     .replace(/(^|_)\d+(?=_|$)/g, '')
     .replace(/^_+|_+$/g, '')
     .replace(/_+/g, '_');
-  return { url, file, type, booklet, bookletRange: range ? [+range[1], +range[2]] : null, course };
+  const modality = TEACHING_DEGREE.test(name) ? 'teaching' : 'bachelor';
+  return { url, file, type, booklet, bookletRange: range ? [+range[1], +range[2]] : null, course, computing: !!computing, modality };
 }
 
 /** Lists every PDF published for the given years, across all known sections. */
@@ -65,7 +87,7 @@ export async function discover(years, log = console.log) {
   const found = [];
   for (const year of years) {
     for (const section of SECTIONS) {
-      const url = `${BASE}/${section.slug}/provas-e-gabaritos/${year}`;
+      const url = `${BASE}/${section}/provas-e-gabaritos/${year}`;
       let html = null;
       try {
         html = await fetchText(url);
@@ -74,10 +96,10 @@ export async function discover(years, log = console.log) {
       }
       if (!html) continue;
       const links = [...new Set(html.match(/https?:\/\/download\.inep\.gov\.br\/[^"'\s<>]+?\.pdf/gi) || [])];
-      log(`  ${year} ${section.slug}: ${links.length} PDFs`);
+      log(`  ${year} ${section}: ${links.length} PDFs`);
       for (const link of links) {
         const d = describeFile(link, year);
-        if (d) found.push({ ...d, year, modality: section.modality, page: url });
+        if (d) found.push({ ...d, year, page: url });
       }
     }
   }
@@ -87,42 +109,36 @@ export async function discover(years, log = console.log) {
 /** Groups files into exams (year + course) and picks booklet 1, answer key, answer guide and test map. */
 export function selectExams(files) {
   const byKey = new Map();
-  for (const f of files) {
-    const key = `${f.year}|${f.modality}|${f.course}`;
+  for (const f of files.filter((f) => f.modality === 'bachelor')) {
+    const key = `${f.year}|${f.course}`;
     if (!byKey.has(key)) byKey.set(key, []);
     byKey.get(key).push(f);
   }
   const groups = [...byKey.entries()].map(([key, list]) => {
-    const [year, modality, course] = key.split('|');
+    const [year, course] = key.split('|');
     const pick = (type) => {
       const l = list.filter((f) => f.type === type);
       return l.find((f) => f.booklet === 1) || l.find((f) => f.bookletRange?.[0] === 1) || l[0] || null;
     };
-    return { year: +year, modality, course, exam: pick('exam'), answerKey: pick('answerKey'), answerGuide: pick('answerGuide'), testMap: pick('testMap') };
+    return {
+      year: +year, course, computing: list[0].computing, modality: 'bachelor',
+      exam: pick('exam'), answerKey: pick('answerKey'), answerGuide: pick('answerGuide'), testMap: pick('testMap'),
+    };
   });
 
-  const exams = [];
-  const years = [...new Set(groups.map((g) => g.year))].sort();
-  for (const year of years) {
-    const ofYear = groups.filter((g) => g.year === year && g.exam && g.answerKey);
-    const computing = ofYear.filter((g) => COMPUTING.test(g.course));
-    for (const g of computing) exams.push({ ...g, scope: 'full' });
-    const hasComputingBachelor = computing.some((g) => g.modality === 'bachelor');
-    const bachelors = ofYear.filter((g) => g.modality === 'bachelor' && !COMPUTING.test(g.course));
-    if (!hasComputingBachelor && bachelors.length) {
-      const source = GENERAL_EDUCATION_SOURCE.map((c) => bachelors.find((g) => g.course === c)).find(Boolean) || bachelors[0];
-      exams.push({ ...source, scope: 'general-education' });
-    }
-  }
-  return exams;
+  // only computing tests; years without one (e.g. 2015, 2016, 2018) contribute nothing
+  return groups
+    .filter((g) => g.computing && g.exam && g.answerKey)
+    .sort((a, b) => a.year - b.year || a.course.localeCompare(b.course))
+    .map((g) => ({ ...g, scope: 'full' }));
 }
 
 export async function download(file, dir, log = console.log) {
   fs.mkdirSync(dir, { recursive: true });
-  const dest = path.join(dir, file.file);
+  const dest = path.join(dir, `${file.year}_${file.type}_${file.file}`.replace(/^(\d{4})_\w+_\1_/, '$1_'));
   if (fs.existsSync(dest) && fs.statSync(dest).size > 1000) return dest;
-  log(`  â†“ ${file.url}`);
-  const res = await fetch(file.url, { headers: HEADERS });
+  log(`  ↓ ${file.url}`);
+  const res = await fetchWithRetry(file.url);
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${file.url}`);
   fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
   return dest;

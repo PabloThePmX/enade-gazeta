@@ -1,7 +1,7 @@
 // Full pipeline: discover tests on INEP's site → download → extract questions → read answer keys →
 // classify topics and formats → compute patterns → write public/data/data.js and the crops in public/img.
 //
-// usage: npm run crawl                    (2022 through the current year)
+// usage: npm run crawl                    (2014 through the current year)
 //        npm run crawl -- --years=2023-2025
 //        npm run crawl -- --no-images     (reprocess text/classification only, keep existing crops)
 import fs from 'node:fs';
@@ -20,21 +20,18 @@ const args = process.argv.slice(2);
 const option = (name) => args.find((a) => a.startsWith(`--${name}=`))?.split('=')[1] ?? (args.includes(`--${name}`) ? true : null);
 
 const thisYear = new Date().getFullYear();
-const [fromYear, toYear] = (option('years') || `2022-${thisYear}`).split('-').map(Number);
+const [fromYear, toYear] = (option('years') || `2014-${thisYear}`).split('-').map(Number);
 const years = [];
 for (let y = fromYear; y <= (toYear || fromYear); y++) years.push(y);
 const skipImages = !!option('no-images');
 
 // Course names as shown in the interface (Portuguese), keyed by INEP's file-name slug.
 const COURSE_NAMES = {
-  computacao: 'Computação',
   ciencia_da_computacao: 'Ciência da Computação',
-  engenharia_da_computacao: 'Engenharia da Computação',
+  engenharia_da_computacao: 'Engenharia de Computação',
   sistemas_de_informacao: 'Sistemas de Informação',
   engenharia_de_software: 'Engenharia de Software',
   analise_e_desenvolvimento_de_sistemas: 'Análise e Desenvolvimento de Sistemas',
-  redes_de_computadores: 'Redes de Computadores',
-  administracao: 'Administração',
 };
 const courseName = (slug) => COURSE_NAMES[slug] || slug.replace(/_/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase());
 
@@ -52,7 +49,7 @@ async function main() {
   if (!selected.length) throw new Error('No tests found. INEP may have moved its pages.');
   console.log(`\n▶ ${selected.length} tests selected:`);
   for (const e of selected) {
-    console.log(`  ${e.year}  ${e.scope === 'general-education' ? `general education (from ${e.course})` : `${e.course} (${e.modality})`}`);
+    console.log(`  ${e.year}  ${e.course}`);
   }
 
   const exams = [];
@@ -61,10 +58,7 @@ async function main() {
   const warnings = [];
 
   for (const sel of selected) {
-    const generalOnly = sel.scope === 'general-education';
-    const examId = generalOnly
-      ? `${sel.year}-general-education`
-      : `${sel.year}-${sel.course.replace(/_/g, '-')}${sel.modality === 'teaching' ? '-teaching' : ''}`;
+    const examId = `${sel.year}-${sel.course.replace(/_/g, '-')}`;
     console.log(`\n▶ ${examId}`);
     const examPath = await download(sel.exam, RAW_DIR);
     const keyPath = await download(sel.answerKey, RAW_DIR);
@@ -73,8 +67,7 @@ async function main() {
     const key = await parseKey(keyPath, 1);
     if (key.error) warnings.push(`${examId}: ${key.error}`);
 
-    let blocks = parsed.blocks;
-    if (generalOnly) blocks = blocks.filter((b) => b.section === 'general');
+    const blocks = parsed.blocks;
     const objectiveCount = blocks.filter((b) => b.kind === 'objective').length;
     const missingKey = blocks.filter((b) => b.kind === 'objective' && !(b.num in key.answers)).map((b) => b.num);
     if (missingKey.length) warnings.push(`${examId}: no answer for questions ${missingKey.join(', ')}`);
@@ -133,9 +126,8 @@ async function main() {
       id: examId,
       year: sel.year,
       course: sel.course,
-      title: generalOnly ? 'Formação Geral' : courseName(sel.course),
-      sourceCourseName: courseName(sel.course),
-      modality: generalOnly ? 'general-education' : sel.modality, // 'bachelor' | 'teaching' | 'general-education'
+      title: courseName(sel.course),
+      modality: 'bachelor',
       objectiveCount,
       options: Math.max(...optionCounts),
       booklet: 1,
